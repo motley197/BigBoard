@@ -1,404 +1,445 @@
-/* mbed Microcontroller Library
- * Copyright (c) 2019 ARM Limited
- * SPDX-License-Identifier: Apache-2.0
- */
-
-// Mbed Module Support Board Test Code
-// Martin Simpson
-// v0.1
-// 18-09-2020
-
 #include "mbed.h"
 #include "F429_Mega_Shell_Header.h"
 #include "TextLCD/TextLCD.h"
 
 //prototypes
-void Traffic_Lights();
-void LCD_BackLight_Effect();
-void Bar_Flash();
+
 void clearMatrix();
 void matrix_scan();
-int seg7num(int);
-void seg7clear();
-void count_thread();
-float potav();
-void environment_data();
+void reloadMatrix();
+void updateMatrix();
+void setLowBits(char);
+void setHighBits(char);
 
-Thread t1;
-Thread t2;
-Thread t3;
 Thread t4;
-Thread t5;
-Thread t6;
 
-Timer stopwatch;
+int letterCount = 5;        // for testing using "HELLO" so 5 letters
+int progressCounter = 1;    // which letter is being processed
+char message[] = "HELLO";   // the test message
+bool spaceFlag = false;     // is it space being processed - for testing there are 2 spaces between letters
+int newColumn[8];           // the 8 chars that make up each column - this is the column inserted at the 
+                            // far right hand side when the columns are moved one space to the left
+
+// Alphabet array, 26 rows of 16 chars
+// Each column of the matrix has 8 LEDs each which are grouped into  two groups of 4 
+// Each group of 4 can have the state of each one (OFF or ON) defined by an 4 bit number as folows
+// Counting from the bottom to set say just the middle LEDs on set the value to 6
+// 0 MSB
+// 1
+// 1
+// 0 LSB
+// 
+// So the order is Column 1 lower 4, Column 1 upper 4, column 2 lower 4, column 2 upper 4 etc
+// only H, E L and O have been defined so far, the row number is calulated by subtracting 65 from char 
+// numerical value 
+
+char alphabet[26][16] = {{'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 0 = A ASCII code - 65
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 1 = B ASCII code - 66
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 2 = C ASCII code - 67
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 3 = D ASCII code - 68                        
+                        {'0','0','F','F','F','F','B','D','B','D', '3', 'C', '3', 'C', '0', '0'},   // 4 = E ASCII code - 69                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 5 = F ASCII code - 70                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 6 = G ASCII code - 71
+                        {'0','0','F','F','F','F','8','1','8','1', 'F', 'F', 'F', 'F', '0', '0'},   // 7 = H ASCII code - 72
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 8 = I ASCII code - 73                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 9 = J ASCII code - 74                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 10 = K ASCII code - 75                        
+                        {'0','0','F','F','F','F','3','0','3','0', '3', '0', '3', '0', '0', '0'},   // 11 = L ASCII code - 76
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 12 = M ASCII code - 77
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 13 = N ASCII code - 78                        
+                        {'0','0','E','7','F','F','3','C','3','C', 'F', 'F', 'E', '7', '0', '0'},   // 14 = O ASCII code - 79                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 15 = P ASCII code - 80                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 16 = Q ASCII code - 81
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 17 = R ASCII code - 82
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 18 = S ASCII code - 83                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 19 = T ASCII code - 84                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 20 = U ASCII code - 85                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 22 = V ASCII code - 86
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 22 = W ASCII code - 87
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 23 = X ASCII code - 88                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 24 = Y ASCII code - 89                        
+                        {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'}    // 25 = Z ASCII code - 90                        
+                        };
 
 int main()
 {
-    seg7clear();
+  printf("Starting Program..\n");
 
-    Traffic_Lights_2.output();
-    Traffic_Lights_2.mode(OpenDrainNoPull);
-    Traffic_Lights_2 = 1;
-
-    Pedestrian.output();
-    Pedestrian.mode(OpenDrainNoPull);
-
-    Pedestrian = 0;
-    ThisThread::sleep_for(DELAY); //    wait_us(1000000);
-    Pedestrian = 1;
-
-    // 7 segment display setup
-    spi.format(8, 0);       // 8bits, Rising edge, +VE Logic Data
-    spi.frequency(1000000); //1MHz Data Rate
-    oe = 0;                 //Enable Output NB can be more selective than this if you wish
-
-    char switchNum = ' ';
-    printf("Staring Program..\n");
-    t1.start(Traffic_Lights);
-    t2.start(LCD_BackLight_Effect);
-    t3.start(Bar_Flash);
-    t4.start(matrix_scan);
-    t5.start(count_thread);
-    t6.start(environment_data);
-
-    myLCD.cls();
-    myLCD.printf("SECaM PU");
-    myLCD.locate(0, 1);
-    myLCD.printf("Switch=");
-    buzzer.period_us(2273);
-    buzzer = 0.5f;
-    wait_us(200000);
-    buzzer = 0;
-
-    while (true)
-    {
-        if (swA)
-            switchNum = 'A';
-        if (swB)
-            switchNum = 'B';
-        if (swC)
-            switchNum = 'C';
-        if (swD)
-            switchNum = 'D';
-        switch (switchNum)
-        {
-        case 'A':
-            buzzer.period_us(350);
-            buzzer = 0.5f;
-            break; //spk.period_us(2273);
-        case 'B':
-            buzzer.period_us(360);
-            buzzer = 0.5f;
-            break; //spk.period_us(2024);
-        case 'C':
-            buzzer.period_us(370);
-            buzzer = 0.5f;
-            break; //spk.period_us(1912);
-        case 'D':
-            buzzer.period_us(380);
-            buzzer = 0.5f;
-            break; //spk.period_us(1704);
-        default:
-            switchNum = ' ';
-            buzzer = 0;
-            break;
-        }
-        //Voltage = 3.3f * Pot_AN_INPUT.read();
-        myLCD.locate(7, 1);
-        myLCD.printf("%c", switchNum);
-        myLCD.locate(10, 1);
-        myLCD.printf("%4.2fV", potav());
-        //spk=0;
-        switchNum = 0;
-        wait_us(200000);
-    }
+  t4.start(matrix_scan);
 }
 
-float potav()
-{
-    unsigned int adc_sample[SAMPLES + 1];
-    float Voltage;
-    adc_sample[0] = 0;
-    for (int i = 1; i <= SAMPLES; i++)
-    {
-        adc_sample[i] = pot_an_input.read_u16();
-        adc_sample[0] += adc_sample[i];
-    }
-    Voltage = 3.3f * ((float)adc_sample[0] / (float)SAMPLES) / 65535.0f;
-    return Voltage;
-}
 
-void LCD_BackLight_Effect()
-{
-    for (float i = 0; i < 1.0f; i += 0.01)
-    {
-        myLCD_BL = i;
-        ThisThread::sleep_for(20ms);
-    }
-    myLCD_BL = 1.0f;
-}
-
-void Traffic_Lights()
-{
-    while (true)
-    {
-
-        Pedestrian = 0;
-
-        Traffic_Lights_1 = RED;
-        Traffic_Lights_2 = 3; //7-GREEN;
-        ThisThread::sleep_for(DELAY);
-
-        Pedestrian = 1;
-        Traffic_Lights_1 = RED + AMBER;
-        Traffic_Lights_2 = 5; //7-AMBER;
-        ThisThread::sleep_for(DELAY);
-        Traffic_Lights_1 = GREEN;
-        Traffic_Lights_2 = 6;
-        ThisThread::sleep_for(DELAY);
-        Traffic_Lights_1 = AMBER;
-        Traffic_Lights_2 = 4;
-        ThisThread::sleep_for(DELAY);
-    }
-}
-
-void Bar_Flash()
-{
-
-    //RGBled is the value of the Leds NB SHared Bus for Red Green and Blue
-    //RGBcol will select the Capitalised Colour NB rgb lower case is all off
-    // So Value then Latch and then latch off in that order
-    while (true)
-    {
-        RGBoe = 0; //Enable Output
-
-        //RED
-        RGBled = 255;
-        RGBcol = Rgb;
-        RGBcol = rgb; //NB see above i.e. LED value then latch High and Latch Low and repeat for below
-        ThisThread::sleep_for(DELAY / 4);
-        RGBled = 0;
-        RGBcol = Rgb;
-        RGBcol = rgb;
-
-        //GREEN
-        RGBled = 255;
-        RGBcol = rGb;
-        RGBcol = rgb;
-        ThisThread::sleep_for(DELAY / 4);
-        RGBled = 0;
-        RGBcol = rGb;
-        RGBcol = rgb;
-
-        //BLUE
-        RGBled = 255;
-        RGBcol = rgB;
-        RGBcol = rgb;
-        ThisThread::sleep_for(DELAY / 4);
-        RGBled = 0;
-        RGBcol = rgB;
-        RGBcol = rgb;
-
-        // Put all LEDs on
-        RGBled = 255;
-        RGBcol = Rgb;
-        RGBcol = rgb;
-        RGBled = 255;
-        RGBcol = rGb;
-        RGBcol = rgb;
-        RGBled = 255;
-        RGBcol = rgB;
-        RGBcol = rgb;
-        //Use Output Enable line to flash LED bar
-        for (int i = 0; i < 20; i++)
-        {
-            RGBoe = !RGBoe;
-            ThisThread::sleep_for(100ms);
-        }
-        // Reset Red Green and Blue to Zero and latch
-        RGBled = 0;
-        RGBcol = Rgb;
-        RGBcol = rgb;
-        RGBled = 0;
-        RGBcol = rGb;
-        RGBcol = rgb;
-        RGBled = 0;
-        RGBcol = rgB;
-        RGBcol = rgb;
-
-        RGBoe = 1; //Disable Output
-    }
-}
-
+// Matrix_scan function sets up the SPI codes for each led in a 3 dimensional array
+// it then call the functions:
+// reloadMatrix() - moves all columns to the left one place and puts a new column in the far RHS
+// updateMatrix() - refreshes the matrix fast enough for peristance of vision
 void matrix_scan(void)
 {
-    while (true)
+    int movementCounter = 200;
+    int tick;
+
+    int matrix[8][16][3];   // 8 rows, 15 columns three integers for each LED 
+    int lhsColVal = 1;      // The column value counter for Left Hand Side
+    int rhsColVal = 1;      // the column value counter for Right Hand Side
+
+
+    // Fill the matrix
+
+    for (int col = 0; col <= 15; col++)
     {
-        for (int j = 0; j <= 7; j++) //NB ROW has 3 to 8 decoder so 0 to 7 to Row Select
-                                     //COLUMNS(COL) are 0 to 255 to select each Byte
+        if (col < 8) // left hand side {0}, {1,2,4,8,16,32,64,128}, {row} - note row counts up from the bottom
         {
-            for (int i = 1; i < 255; i *= 2) //Increment LEFT Hand Block of 8
-            {
-                cs = 0;          //Send Data to Matrix
-                spi.write(0x00); //COL RHS
-                spi.write(i);    //COL LHS
-                spi.write(j);    //ROW RHS
-                cs = 1;          //low to high will effectivelly LATCH the Shift register to output
-                thread_sleep_for(SCAN_RATE_MS);
-            }
-            for (int i = 1; i < 255; i *= 2) //Increment RIGHT Hand Block of 8
-            {
-                cs = 0;          //Send Data to Matrix
-                spi.write(i);    //COL RHS
-                spi.write(0x00); //COL LHS
-                spi.write(j);    //ROW RHS
-                cs = 1;          //low to high will effectivelly LATCH the Shift register to output
-                thread_sleep_for(SCAN_RATE_MS);
+            for (int row = 0; row <= 7 ; row++)
+            {    
+                matrix[row][col][0] = 0;
+                matrix[row][col][1] = lhsColVal;
+                matrix[row][col][2] = row;
+                
             }
         }
-        for (int j = 0; j <= 7; j++) //NB ROW has 3 to 8 decoder so 0 to 7 to Row Select
-                                     //COLUMNS(COL) are 0 to 255 to select each Byte
+        else // right hand side {1, 2, 4, 8, 16, 32, 64, 128}, {row} - note row counts up from the bottom
         {
+            for (int row = 0; row <= 7; row++)
             {
-                cs = 0;          //Send Data to Matrix
-                spi.write(0xFF); //COL RHS
-                spi.write(0xFF); //COL LHS
-                spi.write(j);    //ROW RHS
-                cs = 1;          //low to high will effectivelly LATCH the Shift register to output
-                thread_sleep_for(SCAN_RATE_MS);
+                matrix[row][col][0] = rhsColVal;
+                matrix[row][col][1] = 0;
+                matrix[row][col][2] = row;
+                
             }
         }
-        for (int j = 7; j >= 0; j--) //NB ROW has 3 to 8 decoder so 0 to 7 to Row Select
-                                     //COLUMNS(COL) are 0 to 255 to select each Byte
+        if (col < 8) // increment column values in power of 2)
         {
-            {
-                cs = 0;          //Send Data to Matrix
-                spi.write(0xFF); //COL RHS
-                spi.write(0xFF); //COL LHS
-                spi.write(j);    //ROW RHS
-                cs = 1;          //low to high will effectivelly LATCH the Shift register to output
-                thread_sleep_for(SCAN_RATE_MS);
-            }
+            lhsColVal *= 2;
         }
+        else
+        {
+            rhsColVal *= 2;
+        }
+
+    } 
+// just for testng limited run 
+    while(progressCounter < 5 )
+    {
+        reloadMatrix(); 
+        updateMatrix();      
     }
 }
 
 void clearMatrix(void)
 {
-    cs = 0;          //CLEAR Matrix
-    spi.write(0x00); //COL RHS
-    spi.write(0x00); //COL LHS
-    spi.write(0x00); //ROX RHS
-    cs = 1;
+  cs = 0;          //CLEAR Matrix
+  spi.write(0x00); //COL RHS
+  spi.write(0x00); //COL LHS
+  spi.write(0x00); //ROX RHS
+  cs = 1;
 }
 
-void count_thread()
+void reloadMatrix()
 {
-    seg7clear();
-    unsigned char counter = 0;
-    while (true)
+    static int columnCounter = 0; // which column of the eight in each letter are we processing?
+    static int spaceCounter = 0;  // which space (of 2 for testing) are we processing?
+    int posn;
+    
+    if (spaceFlag) // is this a space?
     {
-        seg7num(counter);
-        counter++;
-        if (counter > 99)
+        spaceCounter++;
+        printf("Space number %d\n", spaceCounter);
+        if (spaceCounter == 2)
         {
-            counter = 0;
+            spaceCounter = 0;
+            spaceFlag = false;
         }
-        thread_sleep_for(1000);
+    } 
+    else 
+    {
+        columnCounter++;
+        //printf("ReloadMatrix - columnCounter = %d   progressCounter = %d letterCount = %d\n", columnCounter,progressCounter ,letterCount);
+        posn = message[progressCounter - 1]-65;
+        if (columnCounter == 1)
+        {   
+            printf("New letter it is %c\n", message[progressCounter - 1]);
+            printf("Code is %d position %d\n", message[progressCounter - 1], posn);
+            printf("%c %c %c %c %c %c %c %c %c %c %c %c %c %c %c %c\n", alphabet[posn][0],
+                                                                         alphabet[posn][1],
+                                                                         alphabet[posn][2],
+                                                                         alphabet[posn][3],
+                                                                         alphabet[posn][4],
+                                                                         alphabet[posn][5],
+                                                                         alphabet[posn][6],
+                                                                         alphabet[posn][7], 
+                                                                         alphabet[posn][8],
+                                                                         alphabet[posn][9],
+                                                                         alphabet[posn][10],
+                                                                         alphabet[posn][11],
+                                                                         alphabet[posn][12],
+                                                                         alphabet[posn][13],
+                                                                         alphabet[posn][14],
+                                                                         alphabet[posn][15] );
+        } 
+
+        //printf("Status %c %c\n", alphabet[posn][0], alphabet[posn][1]);
+        switch (columnCounter)
+        {
+            case 1:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 1\n");
+                //printf("Sending %c %c\n", alphabet[posn][0], alphabet[posn][1]);
+                setLowBits(alphabet[posn][0]);
+                setHighBits(alphabet[posn][1]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 2:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 2\n");
+                //printf("Sending %c %c\n", alphabet[posn][2], alphabet[posn][3]);
+                setLowBits(alphabet[posn][2]);
+                setHighBits(alphabet[posn][3]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 3:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 3\n");
+                //printf("Sending %c %c\n", alphabet[posn][4], alphabet[posn][5]);
+                setLowBits(alphabet[posn][4]);
+                setHighBits(alphabet[posn][5]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 4:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 4\n");
+                //printf("Sending %c %c\n", alphabet[posn][6], alphabet[posn][7]);
+                setLowBits(alphabet[posn][6]);
+                setHighBits(alphabet[posn][7]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 5:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 5\n");
+                //printf("Sending %c %c\n", alphabet[posn][8], alphabet[posn][9]);
+                setLowBits(alphabet[posn][8]);
+                setHighBits(alphabet[posn][9]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 6:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 6\n");
+                //printf("Sending %c %c\n", alphabet[posn][10], alphabet[posn][11]);
+                setLowBits(alphabet[posn][10]);
+                setHighBits(alphabet[posn][11]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 7:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 7\n");
+                //printf("Sending %c %c\n", alphabet[posn][12], alphabet[posn][13]);
+                setLowBits(alphabet[posn][12]);
+                setHighBits(alphabet[posn][13]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            case 8:     // column one of 8 so use alphabet[posn][0 and 1]
+                //printf("case 8\n");
+                //printf("Sending %c %c\n", alphabet[posn][14], alphabet[posn][15]);
+                setLowBits(alphabet[posn][14]);
+                setHighBits(alphabet[posn][15]);
+                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                break;
+            default:
+                printf("Error switch columnCounter\n");
+                break;
+        }
     }
+    if (columnCounter == 8)
+    {
+        columnCounter = 0;
+        progressCounter++;
+        spaceFlag = true;
+    }
+    if(progressCounter > letterCount)
+    {   
+        printf("Loop around to start of text\n");
+        progressCounter = 1;
+    }
+    thread_sleep_for(200);
 }
 
-int seg7num(int num)
+void updateMatrix()
 {
-    int temp, count = 0;
+    //printf("updateMatrix\n");
+    thread_sleep_for(500);
 
-    if (num < 0 || num > 99)
-    {
-        return -1;
-    } // Out of Range check
+}
 
-    while (count < 2)
-    {
-        if (count == 0)
+void setLowBits(char ch)
+{
+    switch(ch)
         {
-            temp = (num / 10) % 10;
-        } // Tens
-        if (count == 1)
-        {
-            temp = num % 10;
-        } // Units
-        switch (temp)
-        {
-        case 0:
-            seg7 = A + B + C + D + E + F;
+        case '0':
+            //printf("Found a zero\n");
+            newColumn[0] = 0; newColumn[1] = 0; newColumn[2] = 0; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 1:
-            seg7 = B + C;
+        case '1':
+            //printf("Found a one\n");
+            newColumn[0] = 1; newColumn[1] = 0; newColumn[2] = 0; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 2:
-            seg7 = A + B + D + E + G;
+        case '2':
+            //printf("Found a two\n");
+            newColumn[0] = 0; newColumn[1] = 1; newColumn[2] = 0; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 3:
-            seg7 = A + B + C + D + G;
+        case '3':
+            //printf("Found a 3\n");
+            newColumn[0] = 1; newColumn[1] = 1; newColumn[2] = 0; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 4:
-            seg7 = B + C + F + G;
+        case '4':
+            //printf("Found a 4\n");
+            newColumn[0] = 0; newColumn[1] = 0; newColumn[2] = 1; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 5:
-            seg7 = A + C + D + F + G;
+        case '5':
+            //printf("Found a 5\n");
+            newColumn[0] = 1; newColumn[1] = 0; newColumn[2] = 1; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 6:
-            seg7 = C + D + E + F + G;
+        case '6':
+            //printf("Found a 6\n");
+            newColumn[0] = 0; newColumn[1] = 1; newColumn[2] = 1; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 7:
-            seg7 = A + B + C;
+        case '7':
+            //printf("Found a 7\n");
+            newColumn[0] = 1; newColumn[1] = 1; newColumn[2] = 1; newColumn[3] = 0;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 8:
-            seg7 = A + B + C + D + E + F + G;
+        case '8':
+            //printf("Found a 8\n");
+            newColumn[0] = 0; newColumn[1] = 0; newColumn[2] = 0; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
-        case 9:
-            seg7 = A + B + C + D + F + G;
+        case '9':
+            //printf("Found a 9\n");
+            newColumn[0] = 1; newColumn[1] = 0; newColumn[2] = 0; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'A':
+            //printf("Found a 10\n");
+            newColumn[0] = 0; newColumn[1] = 1; newColumn[2] = 0; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'B':
+            //printf("Found a 11\n");
+            newColumn[0] = 1; newColumn[1] = 1; newColumn[2] = 0; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'C':
+            //printf("Found a 12\n");
+            newColumn[0] = 0; newColumn[1] = 0; newColumn[2] = 1; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'D':
+            //printf("Found a 13\n");
+            newColumn[0] = 1; newColumn[1] = 0; newColumn[2] = 1; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'E':
+            //printf("Found a 14\n");
+            newColumn[0] = 0; newColumn[1] = 1; newColumn[2] = 1; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
+            break;
+        case 'F':
+            //printf("Found a 15\n");
+            newColumn[0] = 1; newColumn[1] = 1; newColumn[2] = 1; newColumn[3] = 1;
+            //printf("newColumn[0] is now %d\n", newColumn[0]);
             break;
         default:
-            seg7 = 0;
+            printf("Error\n");
             break;
         }
-        if (count == 0)
-        {
-            LatE1 = 1;
-            LatE1 = 0;
-        } //Latch Tens Digit
-        if (count == 1)
-        {
-            LatE2 = 1;
-            LatE2 = 0;
-        } //Latch Units Digit
-        count++;
-    }
-    return 0; // Return Completed OK
 }
 
-void seg7clear(void)
+void setHighBits(char ch)
 {
-    seg7 = 0;
-    LatE1 = 1;
-    LatE1 = 0;
-    LatE2 = 1;
-    LatE2 = 0;
-}
+    switch(ch)
+        {
+        case '0':
+            //printf("Found a 0\n");
+            newColumn[4] = 0; newColumn[5] = 0; newColumn[6] = 0; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '1':
+            //printf("Found a one\n");
+            newColumn[4] = 1; newColumn[5] = 0; newColumn[6] = 0; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '2':
+            //printf("Found a two\n");
+            newColumn[4] = 0; newColumn[5] = 1; newColumn[6] = 0; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '3':
+            //printf("Found a three\n");
+            newColumn[4] = 1; newColumn[5] = 1; newColumn[6] = 0; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '4':
+            //printf("Found a four\n");
+            newColumn[4] = 0; newColumn[5] = 0; newColumn[6] = 1; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '5':
+            //printf("Found a five\n");
+            newColumn[4] = 1; newColumn[5] = 0; newColumn[6] = 1; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '6':
+            //printf("Found a six\n");
+            newColumn[4] = 0; newColumn[5] = 1; newColumn[6] = 1; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '7':
+            //printf("Found a seven\n");
+            newColumn[4] = 1; newColumn[5] = 1; newColumn[6] = 1; newColumn[7] = 0;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '8':
+            //printf("Found a eight\n");
+            newColumn[4] = 0; newColumn[5] = 0; newColumn[6] = 0; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case '9':
+            //printf("Found a nine\n");
+            newColumn[4] = 1; newColumn[5] = 0; newColumn[6] = 0; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'A':
+            //printf("Found an A\n");
+            newColumn[4] = 0; newColumn[5] = 1; newColumn[6] = 0; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'B':
+            //printf("Found a B\n");
+            newColumn[4] = 1; newColumn[5] = 1; newColumn[6] = 0; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'C':
+            //printf("Found a C\n");
+            newColumn[4] = 0; newColumn[5] = 0; newColumn[6] = 1; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'D':
+            //printf("Found a D\n");
+            newColumn[4] = 1; newColumn[5] = 0; newColumn[6] = 1; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'E':
+            //printf("Found an E\n");
+            newColumn[4] = 0; newColumn[5] = 1; newColumn[6] = 1; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        case 'F':
+            //printf("Found an F\n");
+            newColumn[4] = 1; newColumn[5] = 1; newColumn[6] = 1; newColumn[7] = 1;
+            //printf("newColumn[4] is now %d\n", newColumn[4]);
+            break;
+        default:
+            printf("Error\n");
+            break;
+            
+        }
 
-void environment_data(void)
-{
-    float temperature, pressure;
-
-    bmp280.initialize();
-
-    while (true)
-    {
-        temperature = bmp280.getTemperature();
-        pressure = bmp280.getPressure();
-        printf("%.1fC %.1fmBar\n", temperature, pressure);
-        thread_sleep_for(WAIT_TIME_MS);
-    }
 }
