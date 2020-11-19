@@ -6,6 +6,8 @@
 
 void clearMatrix();
 void matrix_scan();
+void invertMatrix();
+void swapRows(int a, int b);
 void reloadMatrix();
 void updateMatrix();
 void setLowBits(char);
@@ -60,36 +62,44 @@ char alphabet[26][16] = {{'0','0','0','0','0','0','0','0','0','0', '0', '0', '0'
                         {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'},   // 24 = Y ASCII code - 89                        
                         {'0','0','0','0','0','0','0','0','0','0', '0', '0', '0', '0', '0', '0'}    // 25 = Z ASCII code - 90                        
                         };
+// Array to hold the current pattern of LEDs that are ON
+// 1 = ON 0 = OFF
+int pattern[8][16] =   {{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},   
+                        {0,1,1,0,0,0,0,1,1,0,0,0,0,0,0,0},
+                        {0,1,1,0,0,0,0,1,1,0,0,0,0,0,0,0},
+                        {0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+                        {0,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0},
+                        {0,1,1,0,0,1,0,1,1,0,0,0,0,0,0,0},
+                        {0,1,1,0,0,0,1,1,1,0,0,0,0,0,0,0},
+                        {0,0,0,0,0,0,0,1,1,1,1,0,0,0,0,0}};
+                        
+
+int matrix[8][16][3];   // 8 rows, 15 columns three integers for each LED 
+int lhsColVal = 1;      // The column value counter for Left Hand Side
+int rhsColVal = 1;      // the column value counter for Right Hand Side
+
+int movementCounter = 200;
+int tick = 0;
 
 int main()
 {
-  printf("Starting Program..\n");
+    printf("Starting Program..\n");
+    
+    // initialise the pattern array
+    //for (int i = 0; i <= 7; i++)
+    //{
+    //    for (int j = 0; j <= 15; j++)
+    //    {
+    //        pattern[i][j] = 0;
+    //    }
+    //}
 
-  t4.start(matrix_scan);
-}
-
-
-// Matrix_scan function sets up the SPI codes for each led in a 3 dimensional array
-// it then call the functions:
-// reloadMatrix() - moves all columns to the left one place and puts a new column in the far RHS
-// updateMatrix() - refreshes the matrix fast enough for peristance of vision
-void matrix_scan(void)
-{
-    int movementCounter = 200;
-    int tick;
-
-    int matrix[8][16][3];   // 8 rows, 15 columns three integers for each LED 
-    int lhsColVal = 1;      // The column value counter for Left Hand Side
-    int rhsColVal = 1;      // the column value counter for Right Hand Side
-
-
-    // Fill the matrix
-
+    //initialse the matrix of SPI write values
     for (int col = 0; col <= 15; col++)
     {
         if (col < 8) // left hand side {0}, {1,2,4,8,16,32,64,128}, {row} - note row counts up from the bottom
         {
-            for (int row = 0; row <= 7 ; row++)
+            for (int row = 7; row >= 0 ; row--)
             {    
                 matrix[row][col][0] = 0;
                 matrix[row][col][1] = lhsColVal;
@@ -99,7 +109,7 @@ void matrix_scan(void)
         }
         else // right hand side {1, 2, 4, 8, 16, 32, 64, 128}, {row} - note row counts up from the bottom
         {
-            for (int row = 0; row <= 7; row++)
+            for (int row = 7; row >= 0; row--)
             {
                 matrix[row][col][0] = rhsColVal;
                 matrix[row][col][1] = 0;
@@ -117,11 +127,99 @@ void matrix_scan(void)
         }
 
     } 
-// just for testng limited run 
-    while(progressCounter < 5 )
+
+    invertMatrix();
+   
+
+    // test leds running rabbit
+    
+        for (int row = 0; row <= 7; row++)
+        {
+            for (int col = 0; col <= 15; col++)
+            {
+                
+                cs = 0;
+                spi.write(matrix[row][col][0]);
+                spi.write(matrix[row][col][1]);
+                spi.write(matrix[row][col][2]);
+                cs = 1;
+                wait_us(10000);
+            }
+            
+        }
+    
+
+    while(1)
+        {
+        for (int col = 15; col >= 0; col--)
+            {
+            for (int row = 0; row <= 7; row++)
+            {
+                if (pattern[row][col] == 1)
+                {
+                    cs = 0;
+                    spi.write(matrix[row][col][0]);
+                    spi.write(matrix[row][col][1]);
+                    spi.write(matrix[row][col][2]);
+                    cs = 1;
+                }
+                
+            }
+            tick++;
+            
+            if (tick == 1000)
+            {
+                tick = 0;
+
+                int tempCol[8];
+                for (int i = 0; i <= 7; i++)
+                {
+                    tempCol[i] = pattern[i][0];
+                } 
+
+                for (int col = 1; col <= 15; col++)
+                {
+                    for (int row = 0; row <= 7; row++)
+                    {
+                        pattern[row][col - 1] = pattern[row][col];
+                    }
+                }
+
+                for (int i = 0; i <= 7; i++)
+                {
+                    pattern[i][15] = tempCol[i];
+                }
+            }
+            
+            //wait_us(100000);
+            //cs = 0;
+            //spi.write(0);
+            //spi.write(0);
+            //spi.write(0);
+            //cs = 1;
+        }
+    }
+
+    cs = 0;
+    spi.write(0);
+    spi.write(0);
+    spi.write(0);
+    cs = 1;
+
+    //t4.start(matrix_scan);
+}
+
+// Matrix_scan function sets up the SPI codes for each led in a 3 dimensional array
+// it then call the functions:
+// reloadMatrix() - moves all columns to the left one place and puts a new column in the far RHS
+// updateMatrix() - refreshes the matrix fast enough for peristance of vision
+void matrix_scan(void)
+{
+// just for testing limited run 
+    while(progressCounter <= 5 )
     {
         reloadMatrix(); 
-        updateMatrix();      
+        
     }
 }
 
@@ -143,7 +241,7 @@ void reloadMatrix()
     if (spaceFlag) // is this a space?
     {
         spaceCounter++;
-        printf("Space number %d\n", spaceCounter);
+        //printf("Space number %d\n", spaceCounter);
         if (spaceCounter == 2)
         {
             spaceCounter = 0;
@@ -155,27 +253,27 @@ void reloadMatrix()
         columnCounter++;
         //printf("ReloadMatrix - columnCounter = %d   progressCounter = %d letterCount = %d\n", columnCounter,progressCounter ,letterCount);
         posn = message[progressCounter - 1]-65;
-        if (columnCounter == 1)
-        {   
-            printf("New letter it is %c\n", message[progressCounter - 1]);
-            printf("Code is %d position %d\n", message[progressCounter - 1], posn);
-            printf("%c %c %c %c %c %c %c %c %c %c %c %c %c %c %c %c\n", alphabet[posn][0],
-                                                                         alphabet[posn][1],
-                                                                         alphabet[posn][2],
-                                                                         alphabet[posn][3],
-                                                                         alphabet[posn][4],
-                                                                         alphabet[posn][5],
-                                                                         alphabet[posn][6],
-                                                                         alphabet[posn][7], 
-                                                                         alphabet[posn][8],
-                                                                         alphabet[posn][9],
-                                                                         alphabet[posn][10],
-                                                                         alphabet[posn][11],
-                                                                         alphabet[posn][12],
-                                                                         alphabet[posn][13],
-                                                                         alphabet[posn][14],
-                                                                         alphabet[posn][15] );
-        } 
+        //if (columnCounter == 1)
+        //{   
+            //printf("New letter it is %c\n", message[progressCounter - 1]);
+            //printf("Code is %d position %d\n", message[progressCounter - 1], posn);
+            //printf("%c %c %c %c %c %c %c %c %c %c %c %c %c %c %c %c\n", alphabet[posn][0],
+            //                                                             alphabet[posn][1],
+            //                                                             alphabet[posn][2],
+            //                                                             alphabet[posn][3],
+            //                                                             alphabet[posn][4],
+            //                                                             alphabet[posn][5],
+            //                                                             alphabet[posn][6],
+            //                                                             alphabet[posn][7], 
+            //                                                             alphabet[posn][8],
+            //                                                             alphabet[posn][9],
+            //                                                             alphabet[posn][10],
+            //                                                             alphabet[posn][11],
+            //                                                             alphabet[posn][12],
+            //                                                             alphabet[posn][13],
+            //                                                             alphabet[posn][14],
+            //                                                             alphabet[posn][15] );
+        //} 
 
         //printf("Status %c %c\n", alphabet[posn][0], alphabet[posn][1]);
         switch (columnCounter)
@@ -185,61 +283,64 @@ void reloadMatrix()
                 //printf("Sending %c %c\n", alphabet[posn][0], alphabet[posn][1]);
                 setLowBits(alphabet[posn][0]);
                 setHighBits(alphabet[posn][1]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 2:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 2\n");
                 //printf("Sending %c %c\n", alphabet[posn][2], alphabet[posn][3]);
                 setLowBits(alphabet[posn][2]);
                 setHighBits(alphabet[posn][3]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 3:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 3\n");
                 //printf("Sending %c %c\n", alphabet[posn][4], alphabet[posn][5]);
                 setLowBits(alphabet[posn][4]);
                 setHighBits(alphabet[posn][5]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 4:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 4\n");
                 //printf("Sending %c %c\n", alphabet[posn][6], alphabet[posn][7]);
                 setLowBits(alphabet[posn][6]);
                 setHighBits(alphabet[posn][7]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 5:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 5\n");
                 //printf("Sending %c %c\n", alphabet[posn][8], alphabet[posn][9]);
                 setLowBits(alphabet[posn][8]);
                 setHighBits(alphabet[posn][9]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 6:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 6\n");
                 //printf("Sending %c %c\n", alphabet[posn][10], alphabet[posn][11]);
                 setLowBits(alphabet[posn][10]);
                 setHighBits(alphabet[posn][11]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 7:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 7\n");
                 //printf("Sending %c %c\n", alphabet[posn][12], alphabet[posn][13]);
                 setLowBits(alphabet[posn][12]);
                 setHighBits(alphabet[posn][13]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             case 8:     // column one of 8 so use alphabet[posn][0 and 1]
                 //printf("case 8\n");
                 //printf("Sending %c %c\n", alphabet[posn][14], alphabet[posn][15]);
                 setLowBits(alphabet[posn][14]);
                 setHighBits(alphabet[posn][15]);
-                printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
+                //printf("New column is %d%d%d%d%d%d%d%d\n", newColumn[0],newColumn[1],newColumn[2],newColumn[3],newColumn[4],newColumn[5],newColumn[6],newColumn[7]);
                 break;
             default:
                 printf("Error switch columnCounter\n");
                 break;
         }
+
+        //printf("Ready to send new column to matrix\n");
+        updateMatrix();
     }
     if (columnCounter == 8)
     {
@@ -257,9 +358,50 @@ void reloadMatrix()
 
 void updateMatrix()
 {
-    //printf("updateMatrix\n");
-    thread_sleep_for(500);
+    //printf("updateMatrix called\n");
+    // move pattern one column left
+    for (int i = 1; i <= 7; i++)
+    {
+        for (int j = 0; j <= 15; j++)
+        {
+            pattern[i - 1][j] = pattern[i][j];
+        }
+    }
+    // Load last column of pattern array with newColumn array
+    for (int i = 0; i <= 7; i++)
+    {
+        pattern[7][i] = newColumn[i];
+    }
 
+    //refresh 100 times
+    for (int n = 0; n <= 99; n++)
+    {
+        for (int i = 0; i <= 7; i++)
+        {
+            for (int j = 0; j <= 15; j++)
+            {
+                if (pattern[i][j] == 1)
+                {
+                    cs = 0;
+                    spi.write(matrix[i][j][0]);
+                    spi.write(matrix[i][j][1]);
+                    spi.write(matrix[i][j][2]);
+                    cs = 1;
+                }
+                //else 
+                //{
+                //    cs = 0;
+                //    spi.write(0x00);
+                //    spi.write(0x00);
+                //    spi.write(0x00);
+                //    cs = 1;
+                //}
+                
+
+            }
+        }
+        thread_sleep_for(2);
+    }
 }
 
 void setLowBits(char ch)
@@ -442,4 +584,53 @@ void setHighBits(char ch)
             
         }
 
+}
+
+void invertMatrix()
+{
+    swapRows(0, 7);
+    swapRows(1, 6);
+    swapRows(2, 5);
+    swapRows(3, 4);
+
+    // print matrix
+    for (int row = 0; row <= 7; row++)
+    {
+        printf("Row %d - ", row);
+        for (int col = 0; col <= 15; col++)
+        {
+            printf("%d:%d:%d - ", matrix[row][col][0], matrix[row][col][1],matrix[row][col][2]  );
+        }
+        printf("\n");
+    }
+
+}
+
+void swapRows(int a, int b)
+{
+     int tempRow[16][3];
+
+       // first take a copy of row a
+    for (int i = 0; i <= 15; i++)
+    {
+        tempRow[i][0] = matrix[a][i][0];
+        tempRow[i][1] = matrix[a][i][1];
+        tempRow[i][2] = matrix[a][i][2];
+    }
+    
+    //copy b to a 
+    for (int i = 0; i <= 15; i++)
+    {
+        matrix[a][i][0] = matrix[b][i][0];
+        matrix[a][i][1] = matrix[b][i][1];
+        matrix[a][i][2] = matrix[b][i][2];
+    }
+
+    // move copy of a into b
+    for (int i = 0; i <= 15; i++)
+    {
+        matrix[b][i][0] = tempRow[i][0];
+        matrix[b][i][1] = tempRow[i][1];
+        matrix[b][i][2] = tempRow[i][2];
+    }
 }
